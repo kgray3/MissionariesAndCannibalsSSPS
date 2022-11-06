@@ -39,6 +39,13 @@
 ( defmethod display ( ( b bank ) )
    ( format t "MISSIONARIES=~A CANNIBALS=~A BOAT=~A~%" ( bank-missionaries b ) ( bank-cannibals b ) ( bank-boat b ) ) 
 )
+( defmethod equal-bank-p ( ( b1 bank ) ( b2 bank ) )
+    (and
+        ( eq ( bank-missionaries b1 ) ( bank-missionaries b2 ) )
+        ( eq ( bank-cannibals b1 ) ( bank-cannibals b2 ) )
+        ( eq ( bank-boat b1 ) ( bank-boat b2 ) ) 
+    )
+)
 ;------------------------------------------------------------------
 ; MODELLING A STATE
 ( defclass state ()
@@ -52,7 +59,6 @@
     ( display ( state-right-bank s ) )
     nil
 )
-
 ( defmethod copy-state ( ( s state ) )
     ( make-instance 'state :left-bank ( state-left-bank s ) :right-bank ( state-right-bank s ) )
 )
@@ -78,6 +84,33 @@
     ( display ( node-state n ) )
     nil
 )
+
+( defmethod rootp ( ( n node ) )
+    ( eq ( node-name n ) 'root )
+)
+
+( defmethod goalp ( ( s state ) )
+    ( and 
+        ( eq ( bank-missionaries ( state-right-bank s ) ) '(M M M) )
+        ( eq ( bank-cannibals ( state-right-bank s ) ) '(C C C) )
+        ( eq ( bank-boat ( state-right-bank s ) ) 'B )
+    )
+)
+
+( defmethod feast-state-p ( ( s state ) )
+    ( or 
+        ( and 
+            ( > ( length ( bank-missionaries ( state-right-bank s ) ) ) 0 )
+            ( < ( length ( bank-missionaries ( state-right-bank s ) ) ) 
+                ( length ( bank-cannibals ( state-right-bank s ) ) ) )
+        )
+        ( and 
+            ( > ( length ( bank-missionaries ( state-left-bank s ) ) ) 0 )
+            ( < ( length ( bank-missionaries ( state-left-bank s ) ) ) 
+                ( length ( bank-cannibals ( state-left-bank s ) ) ) )
+        )
+    )
+)
 ;---------------------------------------------------------------------------------
 ; MODELING A STATE SPACE OPERATOR
 ( defclass operator ()
@@ -88,18 +121,12 @@
     )
 )
 
-;---------------------------------------------------------------------------------
-; THE MAIN PROGRAM - argument values of e u x eu ex ux eux will cause tracing
-( defmethod mc ( ( trace-instruction symbol ) )
-    ( setf *trace-instruction* trace-instruction )
-    ( establish-operators )
-    ( setup )
-    ( solve )
+( defmethod display ( ( o operator ) )
+     ( format t "~A " ( operator-name o  ) ) 
 )
 
 ( defmethod establish-operators ()
-
-        ( setf *MOVE-CM-LR*
+    ( setf *MOVE-CM-LR*
             ( make-instance 'operator
             :name 'MOVE-CM-LR
             :precondition "There are at least one C and M on left-bank."
@@ -159,12 +186,34 @@
             :precondition "There is at least one M on right-bank."
             :description "Move M to left-bank." )
         )
-    
+)
+;---------------------------------------------------------------------------------
+; THE MAIN PROGRAM - argument values of e u x eu ex ux eux will cause tracing
+( defmethod mc ( ( trace-instruction symbol ) )
+    ( setf *trace-instruction* trace-instruction )
+    ( establish-operators )
+    ( setup )
+    ( solve )
 )
 
-( defmethod display ( ( o operator ) )
-   ( format t "~A " ( operator-name o ) )
+( defmethod display-the-unexplored-list ()
+    ( format t "~%>>> UNEXPLORED LIST~%" )
+    ( display-explored-states )
+    nil
 )
+
+( defmethod display-the-explored-list ()
+    ( format t "~%>>> EXPLORED LIST~%" )
+    ( display-explored-states )
+    nil
+)
+
+( defmethod display-the-e-node ( ( e-node node ) )
+    ( format t "~%>>> E-STATE~%" )
+    ( display e-node )
+    nil
+)
+
 ;---------------------------------------------------------------------------------
 ; SOLVE PERFORMS BREADTH FIRST SEARCH
 ( defmethod solve ( &aux kids e-node )
@@ -198,38 +247,16 @@
     )
     nil
 )
+( defmethod exploredp ( ( s state ) )
+    ;### best to use member with two key word args -- :key and :test
+    ( member s *explored* :key #'node-state :test #'equal-state-p)
+)
 
-( defmethod display-solution ( ( e-node node ) )
-    ( cond
-        (( rootp e-node )
-            ( terpri )
-        )
-        ( t
-            ( display-solution ( node-parent e-node ) )
-            ( format t "~A~%" ( operator-description ( node-operator e-node ) ) )
-        )
-
+( defmethod equal-state-p ( ( s1 state ) ( s2 state ) )
+    (and
+        ( equal-bank-p ( state-left-bank s1 ) ( state-left-bank s2 ) )
+        ( equal-bank-p ( state-right-bank s1 ) ( state-right-bank s2 ) )
     )
-    nil
-)
-
-( defmethod rootp ( ( e-node node ) )
-    ( eq ( node-name e-node ) 'root )
-)
-
-( defmethod display-the-unexplored-list ()
-    ( format t "~%>>> UNEXPLORED LIST~%" )
-    ( display-unexplored-states )
-)
-
-( defmethod display-unexplored-states ()
-    ( mapcar #'display *unexplored* )
-    nil
-)
-
-( defmethod display-the-explored-list ()
-    ( format t "~%>>> EXPLORED LIST~%" )
-    ( display-explored-states )
 )
 
 ( defmethod display-explored-states ()
@@ -237,101 +264,67 @@
     nil
 )
 
-( defmethod display-the-e-node ( (e-node node) )
-    ( format t "~%>>> E-NODE~%" )
-    ( display e-node )
+( defmethod display-unexplored-states ()
+    ( mapcar #'display *unexplored* )
     nil
-)
-
-( defmethod goalp ( ( node-state state ) )
-    ( setf right-bank ( state-right-bank node-state ) )
-    ( and ( = ( count 'M  ( bank-missionaries right-bank ) ) 3 ) 
-        ( = ( count 'C ( bank-cannibals right-bank ) ) 3 ) )
-)
-
-( defmethod feast-state-p ( ( node-state state ) ) 
-    ( setf right-bank ( state-right-bank node-state ) )
-    ( setf left-bank ( state-left-bank node-state ) )
-    (cond 
-        (( > ( count 'C ( bank-cannibals right-bank ) ) ( count 'M ( bank-missionaries right-bank ) ) )
-            t
-        )
-        (( > ( count 'C ( bank-cannibals left-bank ) ) ( count 'M ( bank-missionaries left-bank ) ) )
-            t
-        )
-        (t
-            nil
-        )
-    )
-)
-
-( defmethod exploredp ( ( s state ) )
-    ( member s *explored* :key #'node-state :test #'equal-state-p )
- ;best to use member with two key word args -- :key and :test
-)
-
-( defmethod equal-state-p ( ( s1 state ) ( s2 state ) )
-    (and
-        ( equal ( state-left-bank s1 ) ( state-left-bank s2 ) )
-        ( equal ( state-right-bank s1 ) ( state-right-bank s2 ) )
-    )
 )
 ;------------------------------------------------------------------
 ; THE SETUP
 ( defmethod setup ( &aux root lb rb istate )
 ;; establish root node
-    ( setf lb ( make-instance 'bank :missionaries '(m m m) :cannibals '(c c c) :boat 'b ) )
+    ( setf lb ( make-instance 'bank :missionaries '(M M M) :cannibals '(C C C) :boat 'B ) )
     ( setf rb ( make-instance 'bank :missionaries '() :cannibals '() :boat nil ) )
     ( setf istate ( make-instance 'state :left-bank lb :right-bank rb ) )
     ( setf root ( make-instance 'node :state istate :name 'root ) )
 ;; initialize list of unexplored nodes
     ( setf *unexplored* ( list root ) )
 ;; initialize list of explored nodes
-    ( setf *explored* () )
+    ( setf *explored* '() )
 ; get ready to create good names
     ( setf *ng* ( make-instance 'name-generator :prefix "N" ) )
 )
 ;------------------------------------------------------------------
 ; GENERATING CHILDREN
 ( defmethod children-of ( (e-node node) &aux kids )
-    ( if ( applicablep *MOVE-CM-LR* e-node )
-        ( push ( child-of e-node *MOVE-CM-LR* ) kids )
-    )
-    ( if ( applicablep *MOVE-CC-LR* e-node )
-        ( push ( child-of e-node *MOVE-CC-LR* ) kids )
-    )
-    ( if ( applicablep *MOVE-MM-LR* e-node )
-        ( push ( child-of e-node *MOVE-MM-LR* ) kids )
-    )
-    ( if ( applicablep *MOVE-C-LR* e-node )
-        ( push ( child-of e-node *MOVE-C-LR* ) kids )
-    )
-    ( if ( applicablep *MOVE-M-LR* e-node )
-        ( push ( child-of e-node *MOVE-M-LR* ) kids )
-    )
-    ( if ( applicablep *MOVE-CM-RL* e-node )
-        ( push ( child-of e-node *MOVE-CM-RL* ) kids )
-    )
-    ( if ( applicablep *MOVE-CC-RL* e-node )
-        ( push ( child-of e-node *MOVE-CC-RL* ) kids )
-    )
-    ( if ( applicablep *MOVE-MM-RL* e-node )
-        ( push ( child-of e-node *MOVE-MM-RL* ) kids )
-    )
-    ( if ( applicablep *MOVE-C-RL* e-node )
-        ( push ( child-of e-node *MOVE-C-RL* ) kids )
-    )
-    ( if ( applicablep *MOVE-M-RL* e-node )
-        ( push ( child-of e-node *MOVE-M-RL* ) kids )
-    )
-    kids
+    ;( if ( applicablep *MOVE-CM-LR* e-node )
+    ;    ( push ( child-of e-node *MOVE-CM-LR* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-CC-LR* e-node )
+    ;    ( push ( child-of e-node *MOVE-CC-LR* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-MM-LR* e-node )
+    ;    ( push ( child-of e-node *MOVE-MM-LR* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-C-LR* e-node )
+    ;    ( push ( child-of e-node *MOVE-C-LR* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-M-LR* e-node )
+    ;    ( push ( child-of e-node *MOVE-M-LR* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-CM-RL* e-node )
+    ;    ( push ( child-of e-node *MOVE-CM-RL* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-CC-RL* e-node )
+    ;    ( push ( child-of e-node *MOVE-CC-RL* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-MM-RL* e-node )
+    ;    ( push ( child-of e-node *MOVE-MM-RL* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-C-RL* e-node )
+    ;    ( push ( child-of e-node *MOVE-C-RL* ) kids )
+    ;)
+    ;( if ( applicablep *MOVE-M-RL* e-node )
+     ;   ( push ( child-of e-node *MOVE-M-RL* ) kids )
+    ;)
+    ;kids
 )
 
-( defmethod applicablep ( ( op operator ) ( n node ) )
+( defmethod applicablep ((op operator ) (n node ) )
     ( setf right-bank ( state-right-bank ( node-state n ) ) )
     ( setf left-bank ( state-left-bank ( node-state n ) ) )
-    ( cond
-        (( equal ( bank-boat left-bank ) 'B)
+    (cond
+        ((eq (bank-boat (state-left-bank ( node-state n ) ) ) 'B)
+                
             (cond
                 (( eq ( operator-name op ) 'MOVE-CM-LR )
                     (and 
@@ -355,6 +348,8 @@
                     nil
                 )
             )
+                
+    
         )
         (t
             (cond
@@ -382,29 +377,20 @@
             )
         )
     )
-    
 )
 
-( defmethod child-of ( ( n node ) ( o operator ) &aux c )
-    ( setf new-node ( make-instance 'node ) )
-    ( setf ( node-name new-node ) ( next *ng* ) )
-    ( setf ( node-parent new-node ) n )
-    ( setf ( node-operator new-node ) o )
-    ( setf c ( copy-state ( node-state n ) ) )
-    ( apply-operator o c )
-    ( setf ( node-state new-node ) c )
-    new-node
-)
+
 
 ( defmethod apply-operator ( ( o operator ) ( s state ) )
+   
     ( cond 
         (( equal ( operator-name o ) 'MOVE-CM-LR )
             ( setf ( bank-missionaries ( state-left-bank s ) ) ( remove 'M ( bank-missionaries ( state-left-bank s ) ) :count 1 ) )
             ( setf ( bank-cannibals ( state-left-bank s ) ) ( remove 'C ( bank-cannibals ( state-left-bank s ) ) :count 1 ) )
             ( setf ( bank-missionaries ( state-right-bank s ) ) ( append (bank-missionaries ( state-right-bank s )) '(M) ) )
             ( setf ( bank-cannibals ( state-right-bank s ) ) ( append ( bank-cannibals ( state-right-bank s ) ) '(C) ) )
-           ( setf ( bank-boat ( state-left-bank s ) ) nil )
-           ( setf ( bank-boat ( state-right-bank s ) ) 'B)
+            ( setf ( bank-boat ( state-left-bank s ) ) nil )
+            ( setf ( bank-boat ( state-right-bank s ) ) 'B)
         )
         (( equal ( operator-name o ) 'MOVE-CC-LR )
             ( setf ( bank-cannibals ( state-left-bank s ) ) ( remove 'C ( bank-cannibals ( state-left-bank s ) ) :count 2 ) )
@@ -463,6 +449,18 @@
             ( setf ( bank-boat ( state-right-bank s ) ) nil)
         )
     )
+)
+
+( defmethod child-of ( ( n node ) ( o operator ) &aux c )
+    ( setf new-node ( make-instance 'node ) )
+    ( setf ( node-name new-node ) ( next *ng* ) )
+    ( setf ( node-parent new-node ) n )
+    ( setf ( node-operator new-node ) o )
+    ( setf c ( copy-state ( node-state n ) ) )
+    ( apply-operator o c )
+    ( setf ( node-state new-node ) c )
+    (display new-node)
+    new-node
 )
 ;------------------------------------------------------------------
 ; MODELLING A NAME-GENERATOR
